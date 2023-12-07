@@ -541,9 +541,15 @@ class LLMEngine:
 
         if self.log_stats:
             # Log the system stats.
-            self._log_system_stats(scheduler_outputs.prompt_run,
-                                   scheduler_outputs.num_batched_tokens)
-        return request_outputs
+            # self._log_system_stats(scheduler_outputs.prompt_run,
+            #                        scheduler_outputs.num_batched_tokens)
+            # LLMPERF: Prefill/Decoding throughput
+            avg_prompt_throughput, avg_generation_throughput = self._log_system_stats(scheduler_outputs.prompt_run,
+                                   scheduler_outputs.num_batched_tokens, request_output.finished)
+        else:
+            avg_prompt_throughput, avg_generation_throughput = -1, -1
+
+        return request_outputs, avg_prompt_throughput, avg_generation_throughput
 
     def step(self) -> List[RequestOutput]:
         """Performs one decoding iteration and returns newly generated results.
@@ -573,7 +579,9 @@ class LLMEngine:
         self,
         prompt_run: bool,
         num_batched_tokens: int,
-    ) -> None:
+        # LLMPERF: Prefill/Decoding throughput
+        finished: bool
+    ):
         now = time.monotonic()
         # Log the number of batched input tokens.
         if prompt_run:
@@ -582,8 +590,11 @@ class LLMEngine:
             self.num_generation_tokens.append((now, num_batched_tokens))
 
         elapsed_time = now - self.last_logging_time
-        if elapsed_time < _LOGGING_INTERVAL_SEC:
-            return
+        # LLMPERF: Prefill/Decoding throughput
+        if not finished and elapsed_time < _LOGGING_INTERVAL_SEC:
+            # LLMPERF: Prefill/Decoding throughput
+            # return
+            return -9, -9
 
         # Discard the old stats.
         self.num_prompt_tokens = [(t, n) for t, n in self.num_prompt_tokens
@@ -631,6 +642,9 @@ class LLMEngine:
                     f"GPU KV cache usage: {gpu_cache_usage * 100:.1f}%, "
                     f"CPU KV cache usage: {cpu_cache_usage * 100:.1f}%")
         self.last_logging_time = now
+
+        # LLMPERF: Prefill/Decoding throughput
+        return avg_prompt_throughput, avg_generation_throughput
 
     def _decode_sequence(self, seq: Sequence, prms: SamplingParams) -> None:
         """Decodes the new token for a sequence."""

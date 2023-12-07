@@ -140,6 +140,9 @@ class CompletionStreamResponse(BaseModel):
     model: str
     choices: List[CompletionResponseStreamChoice]
     usage: Optional[UsageInfo]
+    # LLMPERF: Prefill/Decoding throughput
+    avg_prompt_throughput: float
+    avg_generation_throughput: float
 
 
 class ChatMessage(BaseModel):

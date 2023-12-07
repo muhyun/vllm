@@ -475,6 +475,9 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
         logprobs: Optional[LogProbs] = None,
         finish_reason: Optional[str] = None,
         usage: Optional[UsageInfo] = None,
+        # LLMPERF: Prefill/Decoding throughput
+        avg_prompt_throughput: float = -1,
+        avg_generation_throughput: float =-1
     ) -> str:
         choice_data = CompletionResponseStreamChoice(
             index=index,
@@ -487,6 +490,9 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
             created=created_time,
             model=model_name,
             choices=[choice_data],
+            # LLMPERF: Prefill/Decoding throughput
+            avg_prompt_throughput=avg_prompt_throughput, 
+            avg_generation_throughput=avg_generation_throughput,
         )
         if usage is not None:
             response.usage = usage
@@ -515,6 +521,9 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
                     index=i,
                     text=delta_text,
                     logprobs=logprobs,
+                    # LLMPERF: Prefill/Decoding throughput
+                    avg_prompt_throughput=res.avg_prompt_throughput,
+                    avg_generation_throughput=res.avg_generation_throughput,
                 )
                 yield f"data: {response_json}\n\n"
                 if output.finish_reason is not None:
@@ -533,6 +542,9 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
                         logprobs=logprobs,
                         finish_reason=output.finish_reason,
                         usage=final_usage,
+                        # LLMPERF: Prefill/Decoding throughput
+                        avg_prompt_throughput=res.avg_prompt_throughput,
+                        avg_generation_throughput=res.avg_generation_throughput,
                     )
                     yield f"data: {response_json}\n\n"
         yield "data: [DONE]\n\n"

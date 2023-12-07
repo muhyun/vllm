@@ -100,10 +100,15 @@ class RequestTracker:
 
     def process_request_output(self,
                                request_output: RequestOutput,
+                               avg_prompt_throughput, avg_generation_throughput,
                                *,
                                verbose: bool = False) -> None:
         """Process a request output from the engine."""
         request_id = request_output.request_id
+
+        # LLMPERF: Prefill/Decoding throughput
+        request_output.avg_prompt_throughput = avg_prompt_throughput
+        request_output.avg_generation_throughput = avg_generation_throughput
 
         self._request_streams[request_id].put(request_output)
         if request_output.finished:
@@ -185,7 +190,9 @@ class _AsyncLLMEngine(LLMEngine):
         """
         seq_group_metadata_list, scheduler_outputs, ignored = self._schedule()
         if scheduler_outputs.is_empty():
-            return ignored
+            # return ignored
+            # LLMPERF: Prefill/Decoding throughput
+            return ignored, -1, -1
 
         # Execute the model.
         output = await self._run_workers_async(
@@ -196,8 +203,12 @@ class _AsyncLLMEngine(LLMEngine):
             blocks_to_copy=scheduler_outputs.blocks_to_copy,
         )
 
-        return self._process_model_outputs(output, scheduler_outputs) + ignored
-
+        # return self._process_model_outputs(output, scheduler_outputs) + ignored
+        # LLMPERF: Prefill/Decoding throughput
+        # return self._process_model_outputs(output, scheduler_outputs) + ignored
+        request_outputs, avg_prompt_throughput, avg_generation_throughput = self._process_model_outputs(output, scheduler_outputs)
+        return request_outputs + ignored, avg_prompt_throughput, avg_generation_throughput
+    
     async def _run_workers_async(
         self,
         method: str,
@@ -326,12 +337,19 @@ class AsyncLLMEngine:
         if self.engine_use_ray:
             request_outputs = await self.engine.step.remote()
         else:
-            request_outputs = await self.engine.step_async()
+            # request_outputs = await self.engine.step_async()
+            # LLMPERF: Prefill/Decoding throughput
+            request_outputs, avg_prompt_throughput, avg_generation_throughput = await self.engine.step_async()
 
         # Put the outputs into the corresponding streams.
         for request_output in request_outputs:
+            # self._request_tracker.process_request_output(
+            #     request_output, verbose=self.log_requests)
+            # LLMPERF: Prefill/Decoding throughput
             self._request_tracker.process_request_output(
-                request_output, verbose=self.log_requests)
+                request_output, 
+                avg_prompt_throughput, avg_generation_throughput,
+                verbose=self.log_requests)
 
         return len(request_outputs) > 0
 
@@ -367,10 +385,10 @@ class AsyncLLMEngine:
                 if shortened_token_ids is not None:
                     shortened_token_ids = shortened_token_ids[:self.
                                                               max_log_len]
-            logger.info(f"Received request {request_id}: "
-                        f"prompt: {shortened_prompt!r}, "
-                        f"sampling params: {sampling_params}, "
-                        f"prompt token ids: {shortened_token_ids}.")
+            # logger.info(f"Received request {request_id}: "
+            #             f"prompt: {shortened_prompt!r}, "
+            #             f"sampling params: {sampling_params}, "
+            #             f"prompt token ids: {shortened_token_ids}.")
 
         if not self.is_running:
             if self.start_engine_loop:
